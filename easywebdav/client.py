@@ -14,6 +14,7 @@ else:
     from urllib.parse import urlparse
 
 DOWNLOAD_CHUNK_SIZE_BYTES = 1 * 1024 * 1024
+INTERACTIVE_DOWNLOAD_CHUNK_SIZE_BYTES = 1024  # small chunk size for interactive callback-using download for more frequent updates
 
 class WebdavException(Exception):
     pass
@@ -159,17 +160,24 @@ class Client(object):
     def _upload(self, fileobj, remote_path):
         self._send('PUT', remote_path, (200, 201, 204), data=fileobj)
 
-    def download(self, remote_path, local_path_or_fileobj):
+    def download(self, remote_path, local_path_or_fileobj, callback=None):
         response = self._send('GET', remote_path, 200, stream=True)
         if isinstance(local_path_or_fileobj, basestring):
             with open(local_path_or_fileobj, 'wb') as f:
-                self._download(f, response)
+                self._download(f, response, callback)
         else:
-            self._download(local_path_or_fileobj, response)
+            self._download(local_path_or_fileobj, response, callback)
 
-    def _download(self, fileobj, response):
-        for chunk in response.iter_content(DOWNLOAD_CHUNK_SIZE_BYTES):
+    def _download(self, fileobj, response, callback=None):
+        if callback:
+            CHUNK_SIZE = INTERACTIVE_DOWNLOAD_CHUNK_SIZE_BYTES
+        else:
+            CHUNK_SIZE = DOWNLOAD_CHUNK_SIZE_BYTES
+        for chunk in response.iter_content(CHUNK_SIZE):
             fileobj.write(chunk)
+            if callback:
+                callback(len(chunk)) # call the callback, which takes one numerical argument which is bytes read so far.
+                                    # the callback could print a message or update a progress dialogue
 
     def ls(self, remote_path='.'):
         headers = {'Depth': '1'}
